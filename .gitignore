@@ -1,0 +1,23 @@
+# build
+/build/
+build/
+cmake-build-*/
+
+# generated reports
+/data/report/
+
+# ocaml artifacts
+ocaml/pulse_ref
+ocaml/*.cmi
+ocaml/*.cmx
+ocaml/*.cmo
+ocaml/*.o
+ocaml/_build/
+
+# python
+__pycache__/
+*.pyc
+
+# editors / os
+.DS_Store
+*.swp

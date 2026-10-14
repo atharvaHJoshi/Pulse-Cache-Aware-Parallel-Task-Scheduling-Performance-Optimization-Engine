@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libgtest-dev ocaml-nox python3
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=ON
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Unit tests
+        working-directory: build
+        run: ctest --output-on-failure
+
+      - name: OCaml reference differential test
+        run: ./scripts/check_ocaml.sh
+
+      - name: Benchmark smoke test
+        run: |
+          ./build/benchmarks/pulse_bench --workload dataflow-8k --policy all \
+              --workers 4 --repeats 1 --out data/pulse_results.csv
+
+      - name: Render report
+        run: python3 scripts/plot_results.py data/pulse_results.csv --out data/report
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-report
+          path: data/report
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [thread, address]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libgtest-dev
+
+      - name: Configure (${{ matrix.sanitizer }})
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          -DPULSE_SANITIZE=${{ matrix.sanitizer }}
+          -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test under ${{ matrix.sanitizer }} sanitizer
+        working-directory: build
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1
+        run: ctest --output-on-failure
